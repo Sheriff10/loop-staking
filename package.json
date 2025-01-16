@@ -15,6 +15,9 @@
   },
   "dependencies": {
     "@openzeppelin/contracts": "^5.2.0",
-    "ethers": "^6.13.5"
+    "@types/winston": "^2.4.4",
+    "dotenv": "^16.4.7",
+    "ethers": "^6.13.5",
+    "winston": "^3.17.0"
   }
 }

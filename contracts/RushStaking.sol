@@ -23,6 +23,8 @@ contract RushStaking {
     uint public totalReward; // Total rewards distributed
     uint public totalTokenStaked; // Total ETH staked in the contract
     IERC20 public stakingToken;
+    uint public pooledRewardTokens;
+    address public owner;
 
     struct Stake {
         uint amount; // Total amount staked by the user
@@ -34,9 +36,15 @@ contract RushStaking {
 
     mapping(address => Stake) public userStakes;
 
+    modifier onlyOwner() {
+        require(owner == msg.sender, "Only admin");
+        _;
+    }
+
     constructor(uint _stakingApy, address _stakingToken) {
         stakingApy = _stakingApy; // Set the APY during deployment
         stakingToken = IERC20(_stakingToken);
+        owner = msg.sender;
     }
 
     // Function for users to stake ETH
@@ -45,18 +53,22 @@ contract RushStaking {
 
         Stake storage stakeData = userStakes[msg.sender];
 
-        if (stakeData.amount > 0) {
-            // Update rewards before increasing the stake
-            distributeReward(msg.sender);
-        } else {
-            // First-time stake sets the lock period and start time
+        // Update lock period and start time for first-time stakes
+        if (stakeData.amount == 0) {
             stakeData.lockTime = block.timestamp + _lockPeriod;
             stakeData.startTime = block.timestamp;
+        } else {
+            // Extend lock period only if the new lock period is greater
+            if (stakeData.lockTime < block.timestamp + _lockPeriod) {
+                stakeData.lockTime = block.timestamp + _lockPeriod;
+            }
         }
+
         require(
             stakingToken.transferFrom(msg.sender, address(this), _amount),
             "Token transfer failed"
         );
+
         stakeData.amount += _amount;
         stakeData.lastRewardTime = block.timestamp;
 
@@ -77,42 +89,47 @@ contract RushStaking {
     }
 
     // Internal function to distribute rewards once per day
-    function distributeReward(address user) internal {
+    function distributeReward(address user) public {
         Stake storage stakeData = userStakes[user];
 
         require(stakeData.amount > 0, "No active stake found");
+        require(pooledRewardTokens > 0, "No tokens in pool for reward");
         require(
             block.timestamp >= stakeData.lastRewardTime + 1 days,
             "Rewards can only be distributed once a day"
         );
 
+        uint elapsedTime = block.timestamp - stakeData.lastRewardTime; // Time elapsed since last reward
+        uint daysElapsed = elapsedTime / 1 days; // Calculate full days elapsed
         uint dailyReward = calculateDailyReward(user);
-        stakeData.rewardDebt += dailyReward;
-        stakeData.lastRewardTime = block.timestamp;
+        uint totalRewardForDays = daysElapsed * dailyReward; // Total reward for elapsed days
+
+        uint pooledRewardTokensBalance = pooledRewardTokens -
+            totalRewardForDays;
+        require(pooledRewardTokensBalance > 0, "Cannot reward user");
+
+        stakeData.rewardDebt += totalRewardForDays; // Accumulate reward debt
+        stakeData.lastRewardTime += daysElapsed * 1 days; // Update last reward time to match full days processed
+
+        totalReward += totalRewardForDays; // Update total distributed reward
+        pooledRewardTokens -= totalRewardForDays;
     }
 
-    // Function for users to claim accumulated rewards
     function claimRewards() external {
         Stake storage stakeData = userStakes[msg.sender];
         require(stakeData.amount > 0, "No active stake found");
 
-        distributeReward(msg.sender); // Distribute any pending daily rewards
+        // distributeReward(msg.sender); // Distribute rewards for elapsed days
 
-        uint rewardToClaim = stakeData.rewardDebt;
+        uint rewardToClaim = stakeData.rewardDebt; // Get accumulated rewards
         require(rewardToClaim > 0, "No rewards to claim");
 
         require(
             stakingToken.transfer(msg.sender, rewardToClaim),
             "Failed to claim reward"
         );
-        stakeData.rewardDebt = 0; // Reset reward debt after claiming
-
-        // (bool sent, ) = msg.sender.call{value: rewardToClaim}("");
-        // require(sent, "Failed to transfer rewards");
-
-        totalReward += rewardToClaim;
-
         emit RewardClaimed(msg.sender, rewardToClaim);
+        stakeData.rewardDebt = 0; // Reset reward debt after claiming`
     }
 
     // Function to withdraw both the stake and any remaining rewards (if lock time has expired)
@@ -125,9 +142,6 @@ contract RushStaking {
 
         totalTokenStaked -= stakeData.amount;
         totalReward += stakeData.rewardDebt;
-
-        // (bool sent, ) = msg.sender.call{value: stakeData.amount}("");
-        // require(sent, "");
 
         require(
             stakingToken.transfer(msg.sender, stakeData.amount),
@@ -143,6 +157,15 @@ contract RushStaking {
         return address(this).balance;
     }
 
+    function fundPoolReward(uint amount) external onlyOwner {
+        require(
+            stakingToken.transferFrom(msg.sender, address(this), amount),
+            "Unable to fund contract"
+        );
+        pooledRewardTokens += amount;
+        emit Funded(msg.sender, amount);
+    }
+
     // Fallback function to allow the contract to receive ETH
     receive() external payable {}
 
@@ -150,4 +173,5 @@ contract RushStaking {
     event Staked(address indexed user, uint amount, uint lockPeriod);
     event RewardClaimed(address indexed user, uint reward);
     event Withdrawn(address indexed user, uint totalAmount);
+    event Funded(address indexed user, uint totalAmount);
 }
