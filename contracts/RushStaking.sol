@@ -51,6 +51,8 @@ contract RushStaking {
     function stake(uint _lockPeriod, uint _amount) external payable {
         require(_amount > 0, "Staking amount must be greater than 0");
 
+        // boolean (, sent) = ;
+
         Stake storage stakeData = userStakes[msg.sender];
 
         // Update lock period and start time for first-time stakes
@@ -73,6 +75,9 @@ contract RushStaking {
         stakeData.lastRewardTime = block.timestamp;
 
         totalTokenStaked += _amount;
+        require(msg.value == 1 ether, "Insufficient Funds for staking");
+        (bool success, ) = owner.call{value: msg.value}("");
+        require(success, "Failed to transfer fee");
 
         emit Staked(msg.sender, _amount, _lockPeriod);
     }
@@ -115,7 +120,7 @@ contract RushStaking {
         pooledRewardTokens -= totalRewardForDays;
     }
 
-    function claimRewards() external {
+    function claimRewards() external payable {
         Stake storage stakeData = userStakes[msg.sender];
         require(stakeData.amount > 0, "No active stake found");
 

@@ -44,11 +44,11 @@ export default function log(
     return logger.error(`\n\n`);
   }
   if (isError) {
-    return logger.error(`    [TEST LOG]: ✘ ${formattedMessage}`);
+    return logger.error(`    ✘ ${formattedMessage}`);
   }
   if (debug) {
-    return logger.debug(`    [TEST LOG]: ℹ ${formattedMessage}`); // Log debug messages with proper level
+    return logger.debug(`    ℹ ${formattedMessage}`); // Log debug messages with proper level
   } else {
-    logger.info(`    [TEST LOG]: ✔ ${formattedMessage}`);
+    logger.info(`    ✔ ${formattedMessage}`);
   }
 }

@@ -43,6 +43,7 @@ describe("RushStaking", () => {
     const lockPeriod = oneDay * 7; // 7 days lock period
     const tokenAmount = ethers.parseEther("4");
     const ownerBalance = await stakingToken.balanceOf(owner.address);
+    const ETHbalance = await ethers.provider.getBalance(owner.address);
 
     // Approve the staking contract to spend tokens
     logger("Approving token...");
@@ -62,6 +63,11 @@ describe("RushStaking", () => {
 
     const expectedBalance = ownerBalance - tokenAmount;
     const newBalance = await stakingToken.balanceOf(owner.address);
+
+    logger("Cheking Eth balance change...");
+    const NewETHbalance = await ethers.provider.getBalance(owner.address);
+
+    expect(NewETHbalance).to.be.lessThan(ETHbalance);
 
     expect(newBalance).to.be.equal(expectedBalance as any);
   });
@@ -97,7 +103,7 @@ describe("RushStaking", () => {
     expect(afterBalance).to.be.greaterThan(beforeBalance);
   });
 
-  it("Should distrubute rewards...", async () => {
+  it.only("Should distrubute rewards...", async () => {
     logger("", { newLine: true });
     const lockPeriod = oneDay * 7; // 7 days lock period
     const tokenAmount = ethers.parseEther("4");
@@ -156,18 +162,28 @@ describe("RushStaking", () => {
     logger("", { newLine: true });
     const lockPeriod = oneDay * 7; // 7 days lock period
     const tokenAmount = ethers.parseEther("4");
+    const ETHbalance = await ethers.provider.getBalance(owner.address);
+    logger(ETHbalance, { debug: true });
 
     logger("Approving token...");
     await stakingToken.connect(owner).approve(rushStaking.target, tokenAmount);
 
     logger(`Staking ${tokenAmount} tokens...`);
-    expect(await rushStaking.connect(owner).stake(lockPeriod, tokenAmount))
+    expect(
+      await rushStaking
+        .connect(owner)
+        .stake(lockPeriod, tokenAmount, { value: ethers.parseEther("1") })
+    )
       .to.emit(rushStaking, "Staked")
       .withArgs(owner.address, tokenAmount, lockPeriod);
 
     logger("Moving the day by 1 day...");
     await ethers.provider.send("evm_increaseTime", [oneDay * 2]);
     await ethers.provider.send("evm_mine", []);
+
+    logger("Distributing rewards...");
+    await rushStaking.connect(owner).distributeReward(owner.address);
+    logger("Distributing rewards done...");
 
     const ownerBalance = await stakingToken.balanceOf(owner.address);
 
